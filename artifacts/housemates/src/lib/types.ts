@@ -6,6 +6,8 @@ export interface Housemate {
   id: string;
   name: string;
   avatarColor: string;
+  /** Optional destination for chore reminders. Older saved records may omit it. */
+  email?: string;
 }
 
 export interface Chore {

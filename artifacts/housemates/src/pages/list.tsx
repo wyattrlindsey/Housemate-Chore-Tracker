@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/hm/empty-state';
 import { PageHeader } from '@/components/hm/page-header';
 import { HmAvatar } from '@/components/hm/avatar';
 import { cn } from '@/lib/utils';
+import { ReminderControl } from '@/components/hm/reminder-control';
 
 export default function ListPage() {
   const { chores, housemates } = useStore();
@@ -52,7 +53,9 @@ export default function ListPage() {
             </span>
           )
         }
-      />
+      >
+        <ReminderControl />
+      </PageHeader>
 
       {chores.length > 0 && (
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

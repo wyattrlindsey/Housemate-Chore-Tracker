@@ -11,6 +11,70 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /reminders/status:
+    get:
+      operationId: getReminderStatus
+      summary: Read the app-wide reminder cooldown
+      responses:
+        "200":
+          description: Current reminder availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderStatus"
+        "503":
+          description: Cooldown storage unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderError"
+  /reminders:
+    post:
+      operationId: sendReminders
+      summary: Forward unfinished chores to n8n, at most once an hour app-wide
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderInput"
+      responses:
+        "200":
+          description: n8n confirmed delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResult"
+        "400":
+          description: Invalid reminder input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderError"
+        "429":
+          description: An hourly reminder attempt has already been made
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderError"
+        "502":
+          description: n8n failed or returned an invalid response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderError"
+        "503":
+          description: Reminders are not configured or cooldown storage is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderError"
+        "504":
+          description: n8n response timed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderError"
   /healthz:
     get:
       operationId: healthCheck
@@ -26,6 +90,94 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    ReminderChore:
+      type: object
+      additionalProperties: false
+      required: [title, due, overdue]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        due:
+          type: string
+          description: Local calendar date in YYYY-MM-DD format
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        overdue:
+          type: boolean
+    ReminderRecipient:
+      type: object
+      additionalProperties: false
+      required: [name, email, chores]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        chores:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/ReminderChore"
+    ReminderInput:
+      type: object
+      additionalProperties: false
+      required: [triggeredBy, reminders]
+      properties:
+        triggeredBy:
+          type: string
+          minLength: 1
+          maxLength: 200
+        reminders:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/ReminderRecipient"
+    ReminderStatus:
+      type: object
+      required: [configured, nextAllowedAt, serverNow]
+      properties:
+        configured:
+          type: boolean
+        nextAllowedAt:
+          type: [string, "null"]
+          format: date-time
+        serverNow:
+          type: string
+          format: date-time
+    ReminderResult:
+      type: object
+      required: [ok, sent, nextAllowedAt, serverNow]
+      properties:
+        ok:
+          type: boolean
+        sent:
+          type: integer
+          minimum: 0
+        nextAllowedAt:
+          type: string
+          format: date-time
+        serverNow:
+          type: string
+          format: date-time
+    ReminderError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        nextAllowedAt:
+          type: string
+          format: date-time
+        serverNow:
+          type: string
+          format: date-time
     HealthStatus:
       type: object
       properties:

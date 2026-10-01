@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import type { AppData, Chore, ChoreStatus, Housemate } from '@/lib/types';
 import { buildSeed, uid } from '@/lib/seed';
 import { toast } from '@/hooks/use-toast';
-
-const KEY = 'housemates.data.v1';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { parseStoredData, STORAGE_KEY as KEY } from '@/lib/stored-data';
 
 type LoadResult = { data: AppData; loadError: string | null };
 
@@ -19,13 +19,8 @@ function load(): LoadResult {
       }
       return { data: seed, loadError: null };
     }
-    const parsed = JSON.parse(raw) as Partial<AppData>;
     return {
-      data: {
-        version: 1,
-        housemates: Array.isArray(parsed.housemates) ? parsed.housemates : [],
-        chores: Array.isArray(parsed.chores) ? parsed.chores : [],
-      },
+      data: parseStoredData(raw),
       loadError: null,
     };
   } catch {
@@ -53,7 +48,7 @@ interface Store {
   addChore: (input: ChoreInput) => boolean;
   updateChore: (id: string, input: Partial<ChoreInput>) => boolean;
   deleteChore: (id: string) => boolean;
-  addHousemate: (name: string, avatarColor: string) => boolean;
+  addHousemate: (name: string, avatarColor: string, email?: string) => boolean;
   updateHousemate: (id: string, patch: Partial<Omit<Housemate, 'id'>>) => boolean;
   removeHousemate: (id: string, reassignTo?: string) => boolean;
 }
@@ -131,16 +126,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const d = dataRef.current;
       return commit({ ...d, chores: d.chores.filter((c) => c.id !== id) });
     },
-    addHousemate: (name, avatarColor) => {
+    addHousemate: (name, avatarColor, email) => {
       const d = dataRef.current;
-      return commit({ ...d, housemates: [...d.housemates, { id: uid(), name: name.trim(), avatarColor }] });
+      const destination = normalizeEmail(email);
+      if (destination && !isValidEmail(destination)) {
+        toast({ variant: 'destructive', title: 'Not saved', description: 'Enter a valid email address, or leave it blank.' });
+        return false;
+      }
+      return commit({ ...d, housemates: [...d.housemates, { id: uid(), name: name.trim(), avatarColor, email: destination }] });
     },
     updateHousemate: (id, patch) => {
       const d = dataRef.current;
+      const destination = normalizeEmail(patch.email);
+      if (destination && !isValidEmail(destination)) {
+        toast({ variant: 'destructive', title: 'Not saved', description: 'Enter a valid email address, or leave it blank.' });
+        return false;
+      }
       return commit({
         ...d,
         housemates: d.housemates.map((h) =>
-          h.id === id ? { ...h, ...patch, name: (patch.name ?? h.name).trim() } : h,
+          h.id === id ? {
+            ...h,
+            ...patch,
+            name: (patch.name ?? h.name).trim(),
+            email: 'email' in patch ? destination : h.email,
+          } : h,
         ),
       });
     },

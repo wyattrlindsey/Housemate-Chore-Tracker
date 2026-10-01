@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/hm/empty-state';
 import { HmAvatar } from '@/components/hm/avatar';
 import { HousemateFormDialog, RemoveHousemateDialog } from '@/components/hm/housemate-dialogs';
 import { isOverdue } from '@/components/hm/chore-card';
+import { normalizeEmail } from '@/lib/email';
 
 export default function HousematesPage() {
   const { housemates, chores } = useStore();
@@ -55,6 +56,9 @@ export default function HousematesPage() {
                         {mine.length === 0 ? 'No chores yet' : `${open} open · ${done} done`}
                         {late > 0 && <span className="font-medium text-[hsl(var(--overdue))]"> · {late} overdue</span>}
                       </p>
+                       <p className="mt-1 break-all text-xs text-muted-foreground" data-testid={`text-housemate-email-${h.id}`}>
+                         {normalizeEmail(h.email) ?? 'No email added'}
+                       </p>
                     </div>
                   </div>
                   <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${h.name} completion`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
@@ -67,7 +71,7 @@ export default function HousematesPage() {
                       onClick={() => { setEditing(h); setFormOpen(true); }}
                       className="rounded-lg"
                       data-testid={`button-edit-housemate-${h.id}`}
-                      aria-label={`Rename or recolor ${h.name}`}
+                      aria-label={`Edit ${h.name}`}
                     >
                       <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
                     </Button>
@@ -92,7 +96,7 @@ export default function HousematesPage() {
       <div className="mt-10 rounded-2xl border border-border bg-accent/40 p-5 text-sm">
         <h2 className="font-semibold text-accent-foreground">Where your data lives</h2>
         <p className="mt-1 text-muted-foreground">
-          Housemates saves everything in this browser's local storage. There's no account and nothing is uploaded, so others won't see your list and it won't sync to your other devices. Clearing your browser data will erase it.
+          Housemates saves your chores and housemates in this browser's local storage. There's no account, so your list won't sync to other devices. When you confirm sending reminders, only the recipients' names, email addresses, and unfinished chore details are sent to the reminder service. Clearing your browser data will erase your local list.
         </p>
       </div>
 

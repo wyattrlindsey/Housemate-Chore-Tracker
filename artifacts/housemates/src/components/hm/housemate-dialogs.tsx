@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +11,7 @@ import { useStore } from '@/store/store';
 import { HmAvatar } from './avatar';
 import { ColorPicker } from './color-picker';
 import { toast } from '@/hooks/use-toast';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 
 export function HousemateFormDialog({
   open,
@@ -20,42 +23,35 @@ export function HousemateFormDialog({
   housemate?: Housemate;
 }) {
   const { housemates, addHousemate, updateHousemate } = useStore();
-  const [name, setName] = useState('');
-  const [color, setColor] = useState(AVATAR_COLORS[0].value);
-  const [error, setError] = useState<string | null>(null);
+  const form = useForm<{ name: string; email: string; avatarColor: string }>({
+    defaultValues: { name: '', email: '', avatarColor: AVATAR_COLORS[0].value },
+  });
+  const name = form.watch('name');
+  const color = form.watch('avatarColor');
 
   useEffect(() => {
     if (!open) return;
-    if (housemate) {
-      setName(housemate.name);
-      setColor(housemate.avatarColor);
-    } else {
-      setName('');
-      const used = new Set(housemates.map((h) => h.avatarColor));
-      setColor((AVATAR_COLORS.find((c) => !used.has(c.value)) ?? AVATAR_COLORS[0]).value);
-    }
-    setError(null);
+    const current = housemates.find((h) => h.id === housemate?.id);
+    const used = new Set(housemates.map((h) => h.avatarColor));
+    form.reset({
+      name: current?.name ?? '',
+      email: normalizeEmail(current?.email) ?? '',
+      avatarColor: current?.avatarColor ?? (AVATAR_COLORS.find((c) => !used.has(c.value)) ?? AVATAR_COLORS[0]).value,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, housemate?.id]);
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const n = name.trim();
-    if (!n) {
-      setError('Enter a name.');
-      document.getElementById('hm-name')?.focus();
-      return;
-    }
-    if (n.length > 40) {
-      setError('Keep the name under 40 characters.');
-      return;
-    }
-    const ok = housemate ? updateHousemate(housemate.id, { name: n, avatarColor: color }) : addHousemate(n, color);
+  const submit = form.handleSubmit((values) => {
+    const n = values.name.trim();
+    const email = normalizeEmail(values.email);
+    const ok = housemate
+      ? updateHousemate(housemate.id, { name: n, avatarColor: values.avatarColor, email })
+      : addHousemate(n, values.avatarColor, email);
     if (ok) {
       toast({ title: housemate ? 'Housemate updated' : `${n} moved in`, description: housemate ? n : 'They can now be assigned chores.' });
       onOpenChange(false);
     }
-  };
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -64,34 +60,50 @@ export function HousemateFormDialog({
           <DialogTitle className="text-xl">{housemate ? 'Edit housemate' : 'Add a housemate'}</DialogTitle>
           <DialogDescription>Their color shows up on chores and the calendar.</DialogDescription>
         </DialogHeader>
-        <form id="hm-form" onSubmit={submit} noValidate className="space-y-5">
-          <div className="flex items-center gap-4 rounded-xl bg-muted/60 p-4">
-            <HmAvatar name={name || '?'} color={color} size="lg" className="transition-colors duration-300" />
-            <div className="min-w-0">
-              <p className="truncate font-semibold">{name.trim() || 'New housemate'}</p>
-              <p className="text-xs text-muted-foreground">Preview</p>
+        <Form {...form}>
+          <form id="hm-form" onSubmit={submit} noValidate className="space-y-5">
+            <div className="flex items-center gap-4 rounded-xl bg-muted/60 p-4">
+              <HmAvatar name={name || '?'} color={color} size="lg" className="transition-colors duration-300" />
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{name.trim() || 'New housemate'}</p>
+                <p className="text-xs text-muted-foreground">Preview</p>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="hm-name">Name</Label>
-            <Input
-              id="hm-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Jordan"
-              autoFocus
-              aria-invalid={!!error}
-              aria-describedby={error ? 'hm-name-err' : undefined}
-              data-testid="input-housemate-name"
-              className="h-11 rounded-xl"
+            <FormField
+              control={form.control}
+              name="name"
+              rules={{ validate: (value) => !value.trim() ? 'Enter a name.' : value.trim().length > 40 ? 'Keep the name under 40 characters.' : true }}
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g. Jordan" autoFocus data-testid="input-housemate-name" className="h-11 rounded-xl" />
+                  </FormControl>
+                  <FormMessage role="alert" data-testid="error-housemate-name" />
+                </FormItem>
+              )}
             />
-            {error && <p id="hm-name-err" role="alert" className="text-sm text-destructive">{error}</p>}
-          </div>
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Avatar color</span>
-            <ColorPicker value={color} onChange={setColor} idBase="hm-color" />
-          </div>
-        </form>
+            <FormField
+              control={form.control}
+              name="email"
+              rules={{ validate: (value) => !normalizeEmail(value) || isValidEmail(value.trim()) || 'Enter a valid email address, or leave it blank.' }}
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel>Email <span className="font-normal text-muted-foreground">(optional)</span></FormLabel>
+                  <FormControl>
+                    <Input {...field} type="email" autoComplete="email" placeholder="e.g. jordan@example.com" data-testid="input-housemate-email" className="h-11 rounded-xl" />
+                  </FormControl>
+                  <FormDescription className="text-xs">Used only when you choose to send chore reminders.</FormDescription>
+                  <FormMessage role="alert" data-testid="error-housemate-email" />
+                </FormItem>
+              )}
+            />
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Avatar color</span>
+              <ColorPicker value={color} onChange={(value) => form.setValue('avatarColor', value)} idBase="hm-color" />
+            </div>
+          </form>
+        </Form>
         <DialogFooter className="flex-row justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl" data-testid="button-cancel-housemate">Cancel</Button>
           <Button type="submit" form="hm-form" className="rounded-xl" data-testid="button-save-housemate">

@@ -1,0 +1,1 @@
+- [Date-only API contracts](date-only-api-contracts.md) — avoid generated date coercion when forwarding calendar dates unchanged.
