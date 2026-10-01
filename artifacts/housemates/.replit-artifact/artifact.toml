@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Housemates"
+description = "A frontend-only shared chore organizer with list and calendar views, housemate settings, and localStorage persistence."
+version = "1.0.0"
+id = "artifacts/housemates"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19649
+
+[services.development]
+run = "pnpm --filter @workspace/housemates run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/housemates", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/housemates/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19649"
+BASE_PATH = "/"

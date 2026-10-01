@@ -1,44 +1,46 @@
-# [Project name]
+# Housemates
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A frontend-only app for housemates to organize chores in list and calendar views.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- Managed workflow `artifacts/housemates: web` runs the app at `/`.
+- `pnpm --filter @workspace/housemates run typecheck` — check the app's TypeScript
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Housemates requires no database, credentials, or external integrations.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- App: React, Vite, TypeScript, Tailwind CSS
+- Persistence: browser localStorage
+- API/database packages are unused starter infrastructure, not part of this product.
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/housemates/` — the application
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Keep this app frontend-only: the user explicitly requested no backend and no login.
+- Data belongs to each browser; do not imply synchronization between devices or people.
+- Removing a housemate with assigned chores requires reassignment, preserving chore history.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Chore creation, editing, deletion, status changes, filtering and sorting; month/week calendar with due and completion dates; housemate management.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+Calm neutral-and-teal styling, Inter typography, responsive desktop top navigation and mobile bottom tabs, accessible forms and controls.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Seed sample data only on first use; an intentionally empty saved list must stay empty.
+- Due dates use local calendar dates; completion timestamps must be displayed on their local date.
 
 ## Pointers
 

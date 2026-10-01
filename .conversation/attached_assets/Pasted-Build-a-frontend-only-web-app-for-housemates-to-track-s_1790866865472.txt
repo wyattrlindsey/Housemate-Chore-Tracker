@@ -1,0 +1,40 @@
+Build a frontend-only web app for housemates to track shared chores. Use React + TypeScript, Tailwind CSS, and persist all data in localStorage (no backend, no login). Before writing code, give me a short plan of the components and data model so I can confirm it.
+
+DATA MODEL
+- Housemate: id, name, avatar color
+- Chore: id, title, optional description, assignee (housemate), status ("To-do" | "In progress" | "Completed"), due date, created date, completed date (set automatically when status changes to Completed, cleared if moved back)
+
+SCREENS
+1. Chores list (default screen)
+   - "Add chore" button opens a modal with title, description, assignee dropdown, and due date picker
+   - Each chore is a card showing title, assignee avatar + name, due date, and a status pill
+   - Status can be changed in one click from the card (dropdown or segmented control)
+   - Filter by status and by housemate; sort by due date
+   - Overdue chores (past due, not completed) are visually highlighted
+   - Edit and delete chores (confirm before delete)
+2. Calendar
+   - Month view with a toggle to week view
+   - Show each chore on its due date, color-coded by assignee
+   - Also show a distinct marker (e.g., checkmark) on the date a chore was completed
+   - Clicking a day shows that day's chores in a side panel; clicking a chore opens its edit modal
+   - Legend explaining colors and markers
+3. Housemates settings
+   - Add, rename, and remove housemates; pick an avatar color
+
+NAVIGATION
+- Top nav on desktop, bottom tab bar on mobile, switching between List, Calendar, and Housemates
+
+VISUAL DESIGN
+- Friendly, calm, and uncluttered, similar in feel to Todoist or Notion Calendar
+- Soft neutral background, white rounded cards with subtle shadows, generous spacing
+- One accent color (e.g., teal) plus status colors: gray = To-do, amber = In progress, green = Completed
+- Clean sans-serif font (Inter), clear type hierarchy
+- Smooth, subtle transitions when status changes or modals open
+- Fully responsive and usable on a phone
+
+QUALITY DETAILS
+- Friendly empty states ("No chores yet — add your first one")
+- Form validation (title and assignee required)
+- Accessible: keyboard navigable, visible focus states, sufficient color contrast
+
+Preload 3 sample housemates and about 10 sample chores spread across this month in mixed statuses so I can see the UI populated immediately.
