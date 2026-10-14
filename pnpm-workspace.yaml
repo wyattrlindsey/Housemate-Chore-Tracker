@@ -160,3 +160,6 @@ overrides:
   esbuild: "0.28.2"
   # orval pins js-yaml to an exact version older than the CVE fix (>=4.3.2)
   js-yaml: '4.3.2'
+  # Typography's latest release still pins the vulnerable 6.x parser.
+  # 7.1.6 fixes GHSA-rj75-hqrm-r3gf and preserves its selector API.
+  '@tailwindcss/typography>postcss-selector-parser': '7.1.6'
