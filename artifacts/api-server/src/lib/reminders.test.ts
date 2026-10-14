@@ -7,6 +7,7 @@ import type { ReminderStatus, ReminderError, ReminderResult } from "@workspace/a
 import { createCooldownStore, type CooldownStore } from "./reminder-cooldown";
 import { createReminderRouter } from "../routes/reminders";
 import { sendToWebhook, WebhookError } from "./n8n-reminders";
+import { ReminderAccessError, localDate } from "./supabase-reminders";
 
 type JsonReminderResult = Omit<ReminderResult, "nextAllowedAt" | "serverNow"> & {
   nextAllowedAt: string;
@@ -22,6 +23,9 @@ const fixture = {
   }],
 };
 const config = { url: "https://workflow.example.test/webhook/chores", key: "test-key-not-a-real-secret" };
+const choreId = "00000000-0000-4000-8000-000000000001";
+const otherChoreId = "00000000-0000-4000-8000-000000000002";
+const input = { choreId, everyone: true, timeZone: "America/New_York" };
 
 function memoryCooldown(): CooldownStore {
   let nextAllowedAt: string | null = null;
@@ -36,10 +40,25 @@ function memoryCooldown(): CooldownStore {
 }
 
 async function withApi(
-  deps: Parameters<typeof createReminderRouter>[0],
+  deps: {
+    cooldown: CooldownStore;
+    config: () => typeof config | null;
+    send: typeof sendToWebhook;
+    authorize?: Parameters<typeof createReminderRouter>[0]["authorize"];
+    scopedCooldown?: Parameters<typeof createReminderRouter>[0]["cooldown"];
+  },
   run: (base: string) => Promise<void>,
 ) {
-  const app = express().use(express.json()).use("/api", createReminderRouter(deps));
+  const app = express().use(express.json()).use("/api", createReminderRouter({
+    ...deps,
+    cooldown: deps.scopedCooldown ?? (() => deps.cooldown),
+    identityConfigured: () => true,
+    authorize: deps.authorize ?? (async (token, id) => {
+      if (token !== "valid-token") throw new ReminderAccessError(401, "Please sign in again.");
+      if (![choreId, otherChoreId].includes(id)) throw new ReminderAccessError(403, "You don't have access to this chore.");
+      return { houseId: id === choreId ? "house-one" : "house-two", prepare: async () => fixture };
+    }),
+  }));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -51,13 +70,15 @@ async function withApi(
   }
 }
 
-const post = (base: string, body: unknown = fixture) =>
-  fetch(`${base}/reminders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const headers = { "Content-Type": "application/json", Authorization: "Bearer valid-token" };
+const post = (base: string, body: unknown = input) =>
+  fetch(`${base}/reminders`, { method: "POST", headers, body: JSON.stringify(body) });
+const statusRequest = (base: string) => fetch(`${base}/reminders/status?choreId=${choreId}`, { headers });
 
 test("missing configuration returns useful error without reserving or sending", async () => {
   const cooldown = memoryCooldown();
   await withApi({ cooldown, config: () => null, send: async () => { throw Error("must not send"); } }, async (base) => {
-    const status = await (await fetch(`${base}/reminders/status`)).json() as ReminderStatus;
+    const status = await (await statusRequest(base)).json() as ReminderStatus;
     assert.equal(status.configured, false);
     const response = await post(base);
     assert.equal(response.status, 503);
@@ -91,11 +112,10 @@ test("invalid/empty requests never reserve or send", async () => {
   await withApi({ cooldown, config: () => config, send: async () => { throw Error("must not send"); } }, async (base) => {
     for (const body of [
       {},
-      { ...fixture, reminders: [] },
-      { ...fixture, reminders: [{ ...fixture.reminders[0], email: "not-an-email" }] },
-      { ...fixture, reminders: [{ ...fixture.reminders[0], chores: [] }] },
-      { ...fixture, reminders: [{ ...fixture.reminders[0], chores: [{ title: "Dishes", due: "2026-02-30", overdue: false }] }] },
-      { ...fixture, triggeredBy: " " },
+      fixture,
+      { ...input, email: "attacker@example.test" },
+      { ...input, houseId: "house-two" },
+      { choreId: "not-a-uuid" },
     ]) assert.equal((await post(base, body)).status, 400);
     assert.equal((await cooldown.read()).nextAllowedAt, null);
   });
@@ -133,9 +153,63 @@ test("cooldown storage failure fails closed", async () => {
     cooldown: { read: fail, reserve: fail }, config: () => config,
     send: async () => { throw Error("must not send"); },
   }, async (base) => {
-    assert.equal((await fetch(`${base}/reminders/status`)).status, 503);
+    assert.equal((await statusRequest(base)).status, 503);
     assert.equal((await post(base)).status, 503);
   });
+});
+
+test("missing/invalid JWT and inaccessible chores never reserve or send", async () => {
+  const cooldown = memoryCooldown();
+  await withApi({ cooldown, config: () => config, send: async () => { throw Error("must not send"); } }, async (base) => {
+    assert.equal((await fetch(`${base}/reminders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })).status, 401);
+    assert.equal((await fetch(`${base}/reminders/status?choreId=${choreId}`)).status, 401);
+    assert.equal((await fetch(`${base}/reminders`, { method: "POST", headers: { ...headers, Authorization: "Bearer invalid" }, body: JSON.stringify(input) })).status, 401);
+    assert.equal((await post(base, { choreId: "00000000-0000-4000-8000-000000000099" })).status, 403);
+    assert.equal((await cooldown.read()).nextAllowedAt, null);
+  });
+});
+
+test("different houses have independent cooldowns, same house shares allowance", async () => {
+  const stores = new Map<string, CooldownStore>();
+  const scopes: string[] = [];
+  let sends = 0;
+  await withApi({
+    cooldown: memoryCooldown(), config: () => config,
+    scopedCooldown: (house) => {
+      scopes.push(house);
+      if (!stores.has(house)) stores.set(house, memoryCooldown());
+      return stores.get(house)!;
+    },
+    send: async () => { sends++; return 1; },
+  }, async (base) => {
+    assert.equal((await post(base)).status, 200);
+    assert.equal((await post(base)).status, 429);
+    assert.equal((await post(base, { choreId: otherChoreId })).status, 200);
+    assert.deepEqual(scopes, ["house-one", "house-one", "house-two"]);
+    assert.equal(sends, 2);
+  });
+});
+
+test("recipient lookup failure does not consume cooldown or forward", async () => {
+  const cooldown = memoryCooldown();
+  await withApi({
+    cooldown, config: () => config,
+    authorize: async () => ({
+      houseId: "verified-house",
+      prepare: async () => { throw new ReminderAccessError(503, "Email lookup unavailable"); },
+    }),
+    send: async () => { throw Error("must not send"); },
+  }, async (base) => {
+    assert.equal((await post(base)).status, 503);
+    assert.equal((await cooldown.read()).nextAllowedAt, null);
+  });
+});
+
+test("overdue date uses supplied time zone, rejects invalid zones", () => {
+  const instant = new Date("2026-10-15T01:00:00Z");
+  assert.equal(localDate("America/New_York", instant), "2026-10-14");
+  assert.equal(localDate("UTC", instant), "2026-10-15");
+  assert.throws(() => localDate("invalid-zone"), ReminderAccessError);
 });
 
 test("webhook sends JSON and secret header server-side; no redirects", async () => {

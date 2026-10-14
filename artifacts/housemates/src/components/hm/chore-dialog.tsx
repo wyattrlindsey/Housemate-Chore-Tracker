@@ -15,7 +15,9 @@ import { StatusSegmented } from './status';
 import { DeleteChoreDialog } from './delete-chore-dialog';
 import { toast } from '@/hooks/use-toast';
 
-type Errors = Partial<Record<'title' | 'assignee' | 'dueDate', string>>;
+const NONE = '__unassigned';
+
+type Errors = Partial<Record<'title' | 'assignee' | 'dueDate' | 'form', string>>;
 
 export function ChoreEditorProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<{ open: boolean; id: string | null; preset?: string }>({ open: false, id: null });
@@ -61,19 +63,20 @@ function ChoreDialog({
   const [status, setStatus] = useState<ChoreStatus>('To-do');
   const [errors, setErrors] = useState<Errors>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (chore) {
       setTitle(chore.title);
       setDescription(chore.description ?? '');
-      setAssigneeId(chore.assigneeId);
-      setDueDate(chore.dueDate);
+      setAssigneeId(chore.assigneeId ?? NONE);
+      setDueDate(chore.dueDate ?? '');
       setStatus(chore.status);
     } else {
       setTitle('');
       setDescription('');
-      setAssigneeId(housemates.length === 1 ? housemates[0].id : '');
+      setAssigneeId(housemates.length === 1 ? housemates[0].id : NONE);
       setDueDate(presetDate ?? todayKey());
       setStatus('To-do');
     }
@@ -85,14 +88,14 @@ function ChoreDialog({
     const e: Errors = {};
     if (!title.trim()) e.title = 'Give the chore a short title.';
     else if (title.trim().length > 120) e.title = 'Keep the title under 120 characters.';
-    if (!assigneeId || !housemates.some((h) => h.id === assigneeId)) e.assignee = 'Choose who is doing this.';
-    if (!dueDate) e.dueDate = 'Pick a due date.';
-    else if (!isValidKey(dueDate)) e.dueDate = 'That date is not valid.';
+    if (assigneeId !== NONE && !housemates.some((h) => h.id === assigneeId)) e.assignee = 'That housemate is no longer in this house.';
+    if (dueDate && !isValidKey(dueDate)) e.dueDate = 'That date is not valid.';
     return e;
   };
 
-  const submit = (ev: React.FormEvent) => {
+  const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
+    if (saving) return;
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) {
@@ -100,20 +103,29 @@ function ChoreDialog({
       document.getElementById(first)?.focus();
       return;
     }
-    const input = { title, description, assigneeId, dueDate, status };
-    const ok = isEdit ? updateChore(chore!.id, input) : addChore(input);
-    if (ok) {
+    const input = { title, description, assigneeId: assigneeId === NONE ? null : assigneeId, dueDate: dueDate || null, status };
+    setSaving(true);
+    try {
+      if (isEdit) await updateChore(chore!.id, input);
+      else await addChore(input);
       toast({ title: isEdit ? 'Changes saved' : 'Chore added', description: title.trim() });
       onOpenChange(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setErrors({ form: msg });
+      toast({ variant: 'destructive', title: 'Not saved', description: msg });
+    } finally {
+      setSaving(false);
     }
   };
 
   const completedKey = chore ? isoToLocalKey(chore.completedAt) : null;
   const noHousemates = housemates.length === 0;
+  const changeOpen = (o: boolean) => { if (!saving) onOpenChange(o); };
 
   return (
     <>
-      <Dialog open={open && (!choreId || isEdit)} onOpenChange={onOpenChange}>
+      <Dialog open={open && (!choreId || isEdit)} onOpenChange={changeOpen}>
         <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-2xl sm:max-w-lg" data-testid="dialog-chore">
           <DialogHeader>
             <DialogTitle className="text-xl">{isEdit ? 'Edit chore' : 'Add a chore'}</DialogTitle>
@@ -124,10 +136,11 @@ function ChoreDialog({
 
           {noHousemates ? (
             <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-              Add at least one housemate on the Housemates tab before creating chores.
+              This house is still loading its members. Try again in a moment.
             </p>
           ) : (
-            <form id="chore-form" onSubmit={submit} noValidate className="space-y-5">
+            <form id="chore-form" onSubmit={(e) => { void submit(e); }} noValidate className="space-y-5">
+              <fieldset disabled={saving} className="space-y-5">
               <div className="space-y-1.5">
                 <Label htmlFor="chore-title">Title</Label>
                 <Input
@@ -173,6 +186,7 @@ function ChoreDialog({
                       <SelectValue placeholder="Choose a housemate" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NONE} data-testid="option-assignee-none">Unassigned</SelectItem>
                       {housemates.map((h) => (
                         <SelectItem key={h.id} value={h.id} data-testid={`option-assignee-${h.id}`}>
                           <span className="flex items-center gap-2">
@@ -186,7 +200,7 @@ function ChoreDialog({
                   {errors.assignee && <p id="err-assignee" role="alert" className="text-sm text-destructive">{errors.assignee}</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="chore-due">Due date</Label>
+                  <Label htmlFor="chore-due">Due date <span className="font-normal text-muted-foreground">(optional)</span></Label>
                   <Input
                     id="chore-due"
                     type="date"
@@ -210,6 +224,8 @@ function ChoreDialog({
                   <p className="text-xs text-muted-foreground">Completed on {format(fromKey(completedKey), 'EEEE, MMM d')}</p>
                 )}
               </div>
+              {errors.form && <p role="alert" className="rounded-xl bg-[hsl(var(--overdue-soft))] p-3 text-sm text-destructive" data-testid="error-chore-form">{errors.form}</p>}
+              </fieldset>
             </form>
           )}
 
@@ -219,6 +235,7 @@ function ChoreDialog({
                 type="button"
                 variant="ghost"
                 onClick={() => setConfirmDelete(true)}
+                disabled={saving}
                 className="mr-auto text-destructive hover:bg-[hsl(var(--overdue-soft))] hover:text-destructive"
                 data-testid="button-dialog-delete"
               >
@@ -228,12 +245,12 @@ function ChoreDialog({
               <span className="mr-auto" />
             )}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl" data-testid="button-cancel-chore">
+              <Button type="button" variant="outline" onClick={() => changeOpen(false)} disabled={saving} className="rounded-xl" data-testid="button-cancel-chore">
                 Cancel
               </Button>
               {!noHousemates && (
-                <Button type="submit" form="chore-form" className="rounded-xl" data-testid="button-save-chore">
-                  {isEdit ? 'Save changes' : 'Add chore'}
+                <Button type="submit" form="chore-form" disabled={saving} className="rounded-xl" data-testid="button-save-chore">
+                  {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add chore'}
                 </Button>
               )}
             </div>

@@ -42,7 +42,7 @@ export default function CalendarPage() {
     const due = new Map<string, Chore[]>();
     const done = new Map<string, Chore[]>();
     for (const c of chores) {
-      (due.get(c.dueDate) ?? due.set(c.dueDate, []).get(c.dueDate)!).push(c);
+      if (c.dueDate) (due.get(c.dueDate) ?? due.set(c.dueDate, []).get(c.dueDate)!).push(c);
       const k = c.status === 'Completed' ? isoToLocalKey(c.completedAt) : null;
       if (k) (done.get(k) ?? done.set(k, []).get(k)!).push(c);
     }
@@ -176,7 +176,7 @@ export default function CalendarPage() {
                         <span
                           key={c.id}
                           className={cn('h-1.5 w-1.5 rounded-full', c.status === 'Completed' && 'opacity-40')}
-                          style={{ backgroundColor: getHousemate(c.assigneeId)?.avatarColor }}
+                          style={{ backgroundColor: getHousemate(c.assigneeId)?.avatarColor ?? '#94a3b8' }}
                         />
                       ))}
                     </span>
@@ -185,7 +185,7 @@ export default function CalendarPage() {
                     {due.slice(0, maxChips).map((c) => {
                       const color = getHousemate(c.assigneeId)?.avatarColor ?? '#94a3b8';
                       const doneC = c.status === 'Completed';
-                      const over = !doneC && c.dueDate < today;
+                      const over = !doneC && !!c.dueDate && c.dueDate < today;
                       return (
                         <span
                           key={c.id}

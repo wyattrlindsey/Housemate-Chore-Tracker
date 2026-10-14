@@ -5,17 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ReminderRecipient } from './reminderRecipient';
 
 export interface ReminderInput {
+  choreId: string;
+  /** Include all unfinished assigned chores in the authorized chore's house. */
+  everyone?: boolean;
   /**
-     * @minLength 1
-     * @maxLength 200
+     * IANA time zone used only to determine today's calendar date.
+     * @maxLength 100
      */
-  triggeredBy: string;
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
-  reminders: ReminderRecipient[];
+  timeZone?: string;
 }

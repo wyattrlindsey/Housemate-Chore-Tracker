@@ -2,30 +2,37 @@ export type ChoreStatus = 'To-do' | 'In progress' | 'Completed';
 
 export const STATUSES: ChoreStatus[] = ['To-do', 'In progress', 'Completed'];
 
+export type HouseRole = 'owner' | 'member';
+
+/** A member of the current house: house_members joined with profiles. */
 export interface Housemate {
   id: string;
   name: string;
   avatarColor: string;
-  /** Optional destination for chore reminders. Older saved records may omit it. */
-  email?: string;
+  role: HouseRole;
+  joinedAt: string;
+}
+
+export interface House {
+  id: string;
+  name: string;
+  inviteCode: string;
+  createdAt: string;
+  role: HouseRole;
 }
 
 export interface Chore {
   id: string;
+  houseId: string;
   title: string;
   description?: string;
-  assigneeId: string;
+  /** null when nobody is assigned (e.g. after an assignee left the house). */
+  assigneeId: string | null;
   status: ChoreStatus;
-  /** Local calendar date, YYYY-MM-DD */
-  dueDate: string;
+  /** Local calendar date, YYYY-MM-DD, or null when there is no due date. */
+  dueDate: string | null;
   createdAt: string;
   completedAt: string | null;
-}
-
-export interface AppData {
-  version: 1;
-  housemates: Housemate[];
-  chores: Chore[];
 }
 
 export const AVATAR_COLORS: { value: string; name: string }[] = [

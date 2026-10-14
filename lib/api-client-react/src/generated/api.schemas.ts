@@ -35,16 +35,14 @@ export interface ReminderRecipient {
 }
 
 export interface ReminderInput {
+  choreId: string;
+  /** Include all unfinished assigned chores in the authorized chore's house. */
+  everyone?: boolean;
   /**
-     * @minLength 1
-     * @maxLength 200
+     * IANA time zone used only to determine today's calendar date.
+     * @maxLength 100
      */
-  triggeredBy: string;
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
-  reminders: ReminderRecipient[];
+  timeZone?: string;
 }
 
 export interface ReminderStatus {
@@ -71,4 +69,23 @@ export interface ReminderError {
 export interface HealthStatus {
   status: string;
 }
+
+/**
+ * Missing or invalid Supabase access token
+ */
+export type UnauthorizedResponse = ReminderError;
+
+/**
+ * Chore is not readable by the signed-in user
+ */
+export type ForbiddenResponse = ReminderError;
+
+/**
+ * Invalid chore ID or request
+ */
+export type InvalidRequestResponse = ReminderError;
+
+export type GetReminderStatusParams = {
+choreId: string;
+};
 

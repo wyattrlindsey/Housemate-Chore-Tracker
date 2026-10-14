@@ -11,7 +11,7 @@ import { DeleteChoreDialog } from './delete-chore-dialog';
 import { toast } from '@/hooks/use-toast';
 
 export function isOverdue(c: Chore): boolean {
-  return c.status !== 'Completed' && c.dueDate < todayKey();
+  return c.status !== 'Completed' && !!c.dueDate && c.dueDate < todayKey();
 }
 
 export function ChoreCard({ chore, index = 0 }: { chore: Chore; index?: number }) {
@@ -19,16 +19,23 @@ export function ChoreCard({ chore, index = 0 }: { chore: Chore; index?: number }
   const { openEdit } = useChoreEditor();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pulse, setPulse] = useState(0);
+  const [pending, setPending] = useState(false);
   const hm = getHousemate(chore.assigneeId);
   const overdue = isOverdue(chore);
   const done = chore.status === 'Completed';
   const completedKey = isoToLocalKey(chore.completedAt);
 
-  const setStatus = (s: ChoreStatus) => {
-    if (s === chore.status) return;
-    if (updateChore(chore.id, { status: s })) {
+  const setStatus = async (s: ChoreStatus) => {
+    if (s === chore.status || pending) return;
+    setPending(true);
+    try {
+      await updateChore(chore.id, { status: s });
       setPulse((p) => p + 1);
       if (s === 'Completed') toast({ title: 'Nicely done', description: `"${chore.title}" is marked complete.` });
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Status not changed', description: err instanceof Error ? err.message : 'Please try again.' });
+    } finally {
+      setPending(false);
     }
   };
 
@@ -75,8 +82,12 @@ export function ChoreCard({ chore, index = 0 }: { chore: Chore; index?: number }
             >
               {overdue ? <AlertCircle className="h-4 w-4" aria-hidden="true" /> : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
               <span>
-                {overdue ? 'Overdue · ' : 'Due '}
-                <time dateTime={chore.dueDate}>{friendlyDate(chore.dueDate)}</time>
+                {chore.dueDate ? (
+                  <>
+                    {overdue ? 'Overdue · ' : 'Due '}
+                    <time dateTime={chore.dueDate}>{friendlyDate(chore.dueDate)}</time>
+                  </>
+                ) : 'No due date'}
               </span>
             </span>
             {done && completedKey && (
@@ -108,10 +119,10 @@ export function ChoreCard({ chore, index = 0 }: { chore: Chore; index?: number }
           </button>
         </div>
       </div>
-      <div className="mt-4 overflow-x-auto">
+      <div className={cn('mt-4 overflow-x-auto transition-opacity', pending && 'pointer-events-none opacity-60')} aria-busy={pending}>
         <StatusSegmented
           value={chore.status}
-          onChange={setStatus}
+          onChange={(s) => { void setStatus(s); }}
           label={`Status of ${chore.title}`}
           idBase={`st-${chore.id}`}
         />

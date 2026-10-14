@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/hm/empty-state';
 import { PageHeader } from '@/components/hm/page-header';
 import { HmAvatar } from '@/components/hm/avatar';
 import { cn } from '@/lib/utils';
+import { compareChores } from '@/lib/mapping';
 import { ReminderControl } from '@/components/hm/reminder-control';
 
 export default function ListPage() {
@@ -20,12 +21,9 @@ export default function ListPage() {
 
   const filtered = useMemo(() => {
     const list = chores.filter(
-      (c) => (status === 'all' || c.status === status) && (who === 'all' || c.assigneeId === who),
+      (c) => (status === 'all' || c.status === status) && (who === 'all' || (who === 'none' ? !c.assigneeId : c.assigneeId === who)),
     );
-    return list.sort((a, b) => {
-      const d = a.dueDate.localeCompare(b.dueDate);
-      return (asc ? d : -d) || a.createdAt.localeCompare(b.createdAt);
-    });
+    return list.sort((a, b) => compareChores(a, b, asc));
   }, [chores, status, who, asc]);
 
   const overdueCount = chores.filter(isOverdue).length;
@@ -86,6 +84,7 @@ export default function ListPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Everyone</SelectItem>
+                <SelectItem value="none">Unassigned</SelectItem>
                 {housemates.map((h) => (
                   <SelectItem key={h.id} value={h.id}>
                     <span className="flex items-center gap-2">

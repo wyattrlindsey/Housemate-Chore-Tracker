@@ -20,11 +20,15 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ForbiddenResponse,
+  GetReminderStatusParams,
   HealthStatus,
+  InvalidRequestResponse,
   ReminderError,
   ReminderInput,
   ReminderResult,
-  ReminderStatus
+  ReminderStatus,
+  UnauthorizedResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -54,20 +58,27 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   return result;
 };
 
-export const getGetReminderStatusUrl = () => {
+export const getGetReminderStatusUrl = (params: GetReminderStatusParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/reminders/status`
+  return stringifiedParams.length > 0 ? `/api/reminders/status?${stringifiedParams}` : `/api/reminders/status`
 }
 
 /**
- * @summary Read the app-wide reminder cooldown
+ * @summary Read the authorized house reminder cooldown using a visible chore
  */
-export const getReminderStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReminderStatus> => {
+export const getReminderStatus = async (params: GetReminderStatusParams, options?: Parameters<typeof customFetch>[1]): Promise<ReminderStatus> => {
 
-  return customFetch<ReminderStatus>(getGetReminderStatusUrl(),
+  return customFetch<ReminderStatus>(getGetReminderStatusUrl(params),
   {
     ...options,
     method: 'GET'
@@ -80,23 +91,23 @@ export const getReminderStatus = async ( options?: Parameters<typeof customFetch
 
 
 
-export const getGetReminderStatusQueryKey = () => {
+export const getGetReminderStatusQueryKey = (params?: GetReminderStatusParams,) => {
     return [
-    `/api/reminders/status`
+    `/api/reminders/status`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetReminderStatusQueryOptions = <TData = Awaited<ReturnType<typeof getReminderStatus>>, TError = ErrorType<ReminderError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReminderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetReminderStatusQueryOptions = <TData = Awaited<ReturnType<typeof getReminderStatus>>, TError = ErrorType<InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ReminderError>>(params: GetReminderStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReminderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetReminderStatusQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetReminderStatusQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReminderStatus>>> = ({ signal }) => getReminderStatus({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReminderStatus>>> = ({ signal }) => getReminderStatus(params, { signal, ...requestOptions });
 
 
 
@@ -106,19 +117,19 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetReminderStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getReminderStatus>>>
-export type GetReminderStatusQueryError = ErrorType<ReminderError>
+export type GetReminderStatusQueryError = ErrorType<InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ReminderError>
 
 
 /**
- * @summary Read the app-wide reminder cooldown
+ * @summary Read the authorized house reminder cooldown using a visible chore
  */
 
-export function useGetReminderStatus<TData = Awaited<ReturnType<typeof getReminderStatus>>, TError = ErrorType<ReminderError>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReminderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetReminderStatus<TData = Awaited<ReturnType<typeof getReminderStatus>>, TError = ErrorType<InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ReminderError>>(
+ params: GetReminderStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReminderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetReminderStatusQueryOptions(options)
+  const queryOptions = getGetReminderStatusQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -140,7 +151,7 @@ export const getSendRemindersUrl = () => {
 }
 
 /**
- * @summary Forward unfinished chores to n8n, at most once an hour app-wide
+ * @summary Forward server-resolved reminders at most once an hour per house
  */
 export const sendReminders = async (reminderInput: ReminderInput, options?: Parameters<typeof customFetch>[1]): Promise<ReminderResult> => {
 
@@ -173,7 +184,7 @@ return customFetch<ReminderResult>(getSendRemindersUrl(),
 
 export const getSendRemindersMutationKey = () => ['sendReminders'] as const;
 
-export const getSendRemindersMutationOptions = <TError = ErrorType<ReminderError>,
+export const getSendRemindersMutationOptions = <TError = ErrorType<ReminderError | UnauthorizedResponse | ForbiddenResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendReminders>>, TError,SendRemindersMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof sendReminders>>, TError,SendRemindersMutationVariables, TContext> => {
 
@@ -202,13 +213,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SendRemindersMutationResult = NonNullable<Awaited<ReturnType<typeof sendReminders>>>
     export type SendRemindersMutationBody = BodyType<ReminderInput>
-    export type SendRemindersMutationError = ErrorType<ReminderError>
+    export type SendRemindersMutationError = ErrorType<ReminderError | UnauthorizedResponse | ForbiddenResponse>
     export type SendRemindersMutationVariables = {data: BodyType<ReminderInput>}
 
     /**
- * @summary Forward unfinished chores to n8n, at most once an hour app-wide
+ * @summary Forward server-resolved reminders at most once an hour per house
  */
-export const useSendReminders = <TError = ErrorType<ReminderError>,
+export const useSendReminders = <TError = ErrorType<ReminderError | UnauthorizedResponse | ForbiddenResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendReminders>>, TError,SendRemindersMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof sendReminders>>,

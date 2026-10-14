@@ -2,92 +2,106 @@
 
 ## Configuration
 
-Set these **Replit Secrets**, not frontend environment variables:
+The backend requires these environment settings:
 
-- `N8N_WEBHOOK_URL`: the HTTPS production webhook URL of your active n8n workflow.
-- `N8N_CHORE_KEY`: a long random secret matching n8n's Header Auth credential.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`: the same Supabase
+  project used by the browser. The publishable key is designed for browser use.
+- `SUPABASE_SECRET_KEY`: **server-only** Supabase secret key, used solely for
+  `auth.admin.getUserById(assignee_id)`. Never give this variable a `VITE_` prefix,
+  log it, send it to the browser, or store it in localStorage.
+- `N8N_WEBHOOK_URL`: HTTPS webhook URL for the active n8n workflow.
+- `N8N_CHORE_KEY`: shared secret matching the n8n Header Auth credential.
 
-In n8n, configure a POST Webhook node with **Header Auth** using header name
-`X-Chore-Key` and the same secret value. Set its response mode to use a
-**Respond to Webhook** node. Send emails using your chosen email-provider node,
-then respond with JSON `{ "ok": true, "sent": 2 }`, where `sent` is the number of
-housemates whose reminder was actually sent, not the number of chores. Do not
-return n8n's default "Workflow was started" response: the app needs the final count.
+The frontend needs only the two `VITE_SUPABASE_*` settings at build time.
+Keep the server settings available to the published API too.
 
-The app waits up to 15 seconds for this response. If delivery takes longer, it
-reports unconfirmed delivery and keeps the cooldown; check the n8n execution.
-No automatic retries are made.
+In n8n configure a POST Webhook node with Header Auth named `X-Chore-Key`.
+Send one email per `body.reminders` item, then use Respond to Webhook to return
+JSON `{ "ok": true, "sent": 2 }`, where `sent` is the actual recipient count.
+Do not return the default “Workflow was started” response. The app waits up to
+15 seconds for n8n's response; delivery after that deadline is unconfirmed.
+There are no automatic retries.
 
-## Payload
+## Authentication and request contract
 
-The webhook receives a JSON object:
+Both endpoints require `Authorization: Bearer <Supabase access token>`.
+
+- `GET /api/reminders/status?choreId=<UUID>` reads the cooldown for the chore's house.
+- `POST /api/reminders` takes `{ "choreId": "<UUID>", "everyone": true,
+  "timeZone": "America/New_York" }`. Omit `everyone` or set it to false to remind
+  only the selected chore's assignee. `timeZone` defaults to UTC.
+
+The **Remind everyone** button supplies an actual chore ID from the selected
+house as the access-check anchor and sets `everyone: true`.
+
+The server verifies the access token with Supabase Auth, then reads the chore
+using a request-scoped publishable-key client carrying that token. RLS checks
+house membership. Missing/invalid tokens return 401; an unreadable chore returns
+403. The client never chooses the cooldown's house ID and cannot supply
+recipients, email addresses, chore titles, due dates, or the sender's name.
+
+All chore/member/profile queries use the caller's RLS-protected client.
+For “everyone,” the server groups unfinished, assigned chores from that house
+and checks that assignees still belong to it. A separate server-only admin
+client resolves each assignee's auth email. Profile names are not email addresses.
+No destination emails are returned to the browser.
+
+## Payload sent to n8n
 
 ```json
 {
-  "triggeredBy": "A housemate",
+  "triggeredBy": "Example sender",
   "reminders": [
     {
       "name": "Example housemate",
       "email": "test@example.com",
       "chores": [
-        { "title": "Clean the kitchen", "due": "2026-10-01", "overdue": true }
+        { "title": "Clean the kitchen", "due": "2026-10-01", "overdue": true },
+        { "title": "Buy sponges", "due": null, "overdue": false }
       ]
     }
   ]
 }
 ```
 
-The Webhook node exposes this as `body`. Split `body.reminders` into items, send
-one email per item, and include each item's chore list. Use plain text or escape
-names/titles when generating HTML email. The `overdue` flag is computed in the
-sender's browser using its local date; chores due today are not overdue.
-
-No housemate is identified as the current user in this app, so `triggeredBy`
-is always `A housemate`. Existing housemates without an email remain valid and
-are skipped, as are housemates with no unfinished chores.
-
-## Testing with your own inbox
-
-1. Add your own email to one test housemate with an unfinished chore.
-2. Leave other emails blank if you want only your inbox to receive a reminder.
-3. For n8n's test webhook URL, first start its test listener; for ongoing use,
-   use the active workflow's production webhook URL.
-4. Click **Remind everyone**, check the recipient list, and confirm.
-5. Check the n8n execution and your inbox. The success toast uses n8n's `sent`.
+Use plain text or escape names/titles in HTML email. `due` is a date-only string
+or null for undated chores. The server calculates `overdue` using the supplied
+IANA time zone; chores due today and undated chores are not overdue.
 
 ## Storage and cooldown
 
-Chores, housemates, and optional emails stay in the existing browser localStorage
-record. Only the app-wide cooldown timestamp is stored in PostgreSQL. The
-timestamp is reserved atomically before contacting n8n and survives restarts
-and multiple server instances. Every forwarded attempt consumes one hour, even
-if n8n errors or times out, because some emails may already have been sent.
-Missing configuration and invalid input do not consume the cooldown.
+Supabase stores users, profiles, houses, memberships and chores. Only reminder
+cooldowns stay in the existing Replit Postgres `reminder_cooldowns` table.
+There is no Supabase cooldown table or schema migration.
 
-The UI reads `GET /api/reminders/status`; sending uses `POST /api/reminders`.
-Both use same-origin `/api` routing in development and publishing. Ensure both
-secrets are available to the published app. The development cooldown table's
-schema is applied through the normal Publish schema flow; do not run ad hoc
-production migrations.
+Cooldown scope is `house:<verified house_id>`, never user-supplied. An atomic
+reservation occurs before contacting n8n and lasts one hour. It survives server
+restarts and multiple instances. A failed or timed-out webhook keeps the
+reservation, since partial delivery may have occurred. Invalid input, failed
+authorization, missing configuration and failed email lookup do not consume it.
+Different houses have independent allowances; all members of a house share one.
+Old app-wide cooldown records are unused and are not deleted.
 
-## Public-app limitation
+## Testing with your inbox
 
-The existing app has no login and stores its recipient list in the browser.
-Consequently the server cannot verify that submitted recipients belong to your
-household. The shared secret authenticates **the backend to n8n**, not people
-using the app. Anyone who can reach the app's API can attempt to trigger the
-app-wide blast and consume its hourly allowance. Before broad public use,
-restrict recipients in n8n to an approved list (including your own inbox during
-testing), or add authenticated household membership. Never place the webhook
-URL or key in browser code or localStorage.
+1. Sign in with a Supabase account using your own email.
+2. Create a test house, then assign an unfinished chore to yourself.
+3. Ensure the n8n workflow is active (or start its test listener for a test URL).
+4. Click **Remind everyone**, review the member names/chore counts, and confirm.
+5. Check the n8n execution and your inbox; the success count comes from n8n.
 
-## Verification
+The UI intentionally has no housemate email inputs. To avoid emailing others,
+test in a house containing only your own account. Each forwarded attempt starts
+the house's hour-long cooldown, including unconfirmed delivery.
 
-Backend integration and webhook-contract tests (all outbound email calls are mocked):
+## Automated checks
 
 ```sh
-pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/reminders.test.ts
+pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/reminders.test.ts ../artifacts/api-server/src/lib/supabase-reminders.test.ts
 ```
 
-The database concurrency test uses a unique test scope and deletes it afterwards;
-it does not use or reset the real app's hourly allowance.
+Outbound email calls are mocked. Tests cover authentication rejection, supplied
+email rejection, authorized house scoping, independent cooldowns, concurrency,
+timeouts, and webhook validation. The database test uses a disposable scope and
+does not reset a real house's allowance. Mock authorization tests do not certify
+the policies deployed in your Supabase project.

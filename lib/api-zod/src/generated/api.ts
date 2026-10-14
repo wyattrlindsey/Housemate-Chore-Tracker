@@ -9,8 +9,12 @@ import * as zod from 'zod';
 
 
 /**
- * @summary Read the app-wide reminder cooldown
+ * @summary Read the authorized house reminder cooldown using a visible chore
  */
+export const GetReminderStatusQueryParams = zod.object({
+  "choreId": zod.coerce.string().uuid()
+})
+
 export const GetReminderStatusResponse = zod.object({
   "configured": zod.boolean(),
   "nextAllowedAt": zod.coerce.date().nullable(),
@@ -19,34 +23,17 @@ export const GetReminderStatusResponse = zod.object({
 
 
 /**
- * @summary Forward unfinished chores to n8n, at most once an hour app-wide
+ * @summary Forward server-resolved reminders at most once an hour per house
  */
-export const sendRemindersBodyTriggeredByMax = 200;
-
-export const sendRemindersBodyRemindersItemNameMax = 200;
-
-export const sendRemindersBodyRemindersItemEmailMax = 254;
-
-export const sendRemindersBodyRemindersItemChoresItemTitleMax = 500;
-
-export const sendRemindersBodyRemindersItemChoresItemDueRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const sendRemindersBodyRemindersItemChoresMax = 200;
-
-export const sendRemindersBodyRemindersMax = 50;
+export const sendRemindersBodyEveryoneDefault = false;
+export const sendRemindersBodyTimeZoneMax = 100;
 
 
 
 export const SendRemindersBody = zod.object({
-  "triggeredBy": zod.string().min(1).max(sendRemindersBodyTriggeredByMax),
-  "reminders": zod.array(zod.object({
-  "name": zod.string().min(1).max(sendRemindersBodyRemindersItemNameMax),
-  "email": zod.string().email().max(sendRemindersBodyRemindersItemEmailMax),
-  "chores": zod.array(zod.object({
-  "title": zod.string().min(1).max(sendRemindersBodyRemindersItemChoresItemTitleMax),
-  "due": zod.string().regex(sendRemindersBodyRemindersItemChoresItemDueRegExp).describe('Local calendar date in YYYY-MM-DD format'),
-  "overdue": zod.boolean()
-})).min(1).max(sendRemindersBodyRemindersItemChoresMax)
-})).min(1).max(sendRemindersBodyRemindersMax)
+  "choreId": zod.string().uuid(),
+  "everyone": zod.boolean().default(sendRemindersBodyEveryoneDefault).describe('Include all unfinished assigned chores in the authorized chore\'s house.'),
+  "timeZone": zod.string().max(sendRemindersBodyTimeZoneMax).optional().describe('IANA time zone used only to determine today\'s calendar date.')
 })
 
 export const sendRemindersResponseSentMin = 0;

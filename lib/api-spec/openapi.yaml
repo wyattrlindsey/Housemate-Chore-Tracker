@@ -14,8 +14,23 @@ paths:
   /reminders/status:
     get:
       operationId: getReminderStatus
-      summary: Read the app-wide reminder cooldown
+      summary: Read the authorized house reminder cooldown using a visible chore
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: choreId
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
         "200":
           description: Current reminder availability
           content:
@@ -31,7 +46,9 @@ paths:
   /reminders:
     post:
       operationId: sendReminders
-      summary: Forward unfinished chores to n8n, at most once an hour app-wide
+      summary: Forward server-resolved reminders at most once an hour per house
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -39,6 +56,10 @@ paths:
             schema:
               $ref: "#/components/schemas/ReminderInput"
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "200":
           description: n8n confirmed delivery
           content:
@@ -89,6 +110,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 components:
+  responses:
+    Unauthorized:
+      description: Missing or invalid Supabase access token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReminderError"
+    Forbidden:
+      description: Chore is not readable by the signed-in user
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReminderError"
+    InvalidRequest:
+      description: Invalid chore ID or request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReminderError"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     ReminderChore:
       type: object
@@ -127,18 +171,19 @@ components:
     ReminderInput:
       type: object
       additionalProperties: false
-      required: [triggeredBy, reminders]
+      required: [choreId]
       properties:
-        triggeredBy:
+        choreId:
           type: string
-          minLength: 1
-          maxLength: 200
-        reminders:
-          type: array
-          minItems: 1
-          maxItems: 50
-          items:
-            $ref: "#/components/schemas/ReminderRecipient"
+          format: uuid
+        everyone:
+          type: boolean
+          default: false
+          description: Include all unfinished assigned chores in the authorized chore's house.
+        timeZone:
+          type: string
+          maxLength: 100
+          description: IANA time zone used only to determine today's calendar date.
     ReminderStatus:
       type: object
       required: [configured, nextAllowedAt, serverNow]

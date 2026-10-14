@@ -11,7 +11,7 @@ function Row({ chore, completedMarker }: { chore: Chore; completedMarker?: boole
   const { getHousemate } = useStore();
   const { openEdit } = useChoreEditor();
   const hm = getHousemate(chore.assigneeId);
-  const overdue = chore.status !== 'Completed' && chore.dueDate < todayKey();
+  const overdue = chore.status !== 'Completed' && !!chore.dueDate && chore.dueDate < todayKey();
   return (
     <li>
       <button
@@ -23,7 +23,7 @@ function Row({ chore, completedMarker }: { chore: Chore; completedMarker?: boole
           overdue ? 'border-[hsl(var(--overdue)/0.35)]' : 'border-border',
         )}
       >
-        <span className="mt-1 h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: hm?.avatarColor }} aria-hidden="true" />
+        <span className="mt-1 h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: hm?.avatarColor ?? '#94a3b8' }} aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className={cn('block text-sm font-semibold', chore.status === 'Completed' && !completedMarker && 'text-muted-foreground line-through')}>
             {chore.title}
@@ -31,10 +31,10 @@ function Row({ chore, completedMarker }: { chore: Chore; completedMarker?: boole
           <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <HmAvatar name={hm?.name ?? '?'} color={hm?.avatarColor ?? '#94a3b8'} size="xs" className="ring-0" />
-              {hm?.name}
+              {hm?.name ?? 'Unassigned'}
             </span>
             {completedMarker ? (
-              <span>was due {format(fromKey(chore.dueDate), 'MMM d')}</span>
+              <span>{chore.dueDate ? `was due ${format(fromKey(chore.dueDate), 'MMM d')}` : 'No due date'}</span>
             ) : (
               <>
                 <StatusPill status={chore.status} />
