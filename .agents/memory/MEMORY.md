@@ -1,1 +1,2 @@
 - [Date-only API contracts](date-only-api-contracts.md) — avoid generated date coercion when forwarding calendar dates unchanged.
+- [Supabase migration constraints](supabase-constraints.md) — use existing Supabase schema and Auth; no Replit Auth or Replit database for app data.
